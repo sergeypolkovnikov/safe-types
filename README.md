@@ -8,7 +8,7 @@ For example we should implement chess game. In that case you should have some cl
 class Square
 {
 public:
-	explicit Square(char file_, int rank_): file {file_}, rank {rank_}
+	explicit Square(const char file_, const int rank_): file {file_}, rank {rank_}
 	{}
 private:
 	char file;
@@ -27,7 +27,7 @@ Ok. let's try to implement different types for each entity in our program
 class FileType
 {
 	public:
-	explicit FileType(char file_): file {file_}
+	explicit FileType(const char file_): file {file_}
 	{}
 private:
 	char file;
@@ -36,7 +36,7 @@ private:
 class RankType
 {
 	public:
-	explicit RankType(char rank_): rank {rank_}
+	explicit RankType(const char rank_): rank {rank_}
 	{}
 private:
 	char rank;
@@ -45,7 +45,7 @@ private:
 class Square
 {
 public:
-	explicit Square(FileType file_, RankType rank_): file {file_}, rank {rank_}
+	explicit Square(const FileType file_, const RankType rank_): file {file_}, rank {rank_}
 	{}
 private:
 	FileType file;
@@ -70,7 +70,7 @@ class RankDimension;
 using FileType = safe_type::singleton<int, RankDimension>;
 
 class Square
-//see below
+//see above
 ~~~
 
 # References
