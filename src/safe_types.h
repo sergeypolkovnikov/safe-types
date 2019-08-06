@@ -5,47 +5,51 @@
 
 namespace safe_types
 {
+    template<typename... Dims>
+    struct tuple_dim
+    {};
+
     template <typename T1, typename T2>
     struct join;
 
     template<typename ...Ts1, typename ...Ts2>
-    struct join<std::tuple<Ts1...>, std::tuple<Ts2...>>
+    struct join<tuple_dim<Ts1...>, tuple_dim<Ts2...>>
     {
-        using type = std::tuple<Ts1..., Ts2...>;
+        using type = tuple_dim<Ts1..., Ts2...>;
     };
 
-    template <typename T, typename Tuple, typename Res = std::tuple<>>
+    template <typename T, typename Tuple, typename Res = tuple_dim<>>
     struct remove;
 
     template<typename T, typename Res>
-    struct remove<T, std::tuple<>, Res>
+    struct remove<T, tuple_dim<>, Res>
     {
         using type = Res;
     };
 
     template<typename T, typename... Ts, typename... TRes>
-    struct remove<T, std::tuple<T, Ts...>, std::tuple<TRes...>>
+    struct remove<T, tuple_dim<T, Ts...>, tuple_dim<TRes...>>
     {
-        using type = std::tuple<TRes..., Ts...>;
+        using type = tuple_dim<TRes..., Ts...>;
     };
 
     template<typename T, typename T1, typename ...Ts, typename... TRes>
-    struct remove<T, std::tuple<T1, Ts...>, std::tuple<TRes...>> :
-        remove<T, std::tuple<Ts...>, std::tuple<TRes..., T1>>
+    struct remove<T, tuple_dim<T1, Ts...>, tuple_dim<TRes...>> :
+        remove<T, tuple_dim<Ts...>, tuple_dim<TRes..., T1>>
     {};
 
     template<typename Tuple1, typename Tuple2>
     struct remove_all {};
 
     template<typename ...Ts1>
-    struct remove_all<std::tuple<Ts1...>, std::tuple<>>
+    struct remove_all<tuple_dim<Ts1...>, tuple_dim<>>
     {
-        using type = std::tuple<Ts1...>;
+        using type = tuple_dim<Ts1...>;
     };
 
     template<typename ...Ts1, typename T, typename... Ts2>
-    struct remove_all<std::tuple<Ts1...>, std::tuple<T, Ts2...>>
-        : remove_all<typename remove<T, std::tuple<Ts1...>>::type, std::tuple<Ts2...>>
+    struct remove_all<tuple_dim<Ts1...>, tuple_dim<T, Ts2...>>
+        : remove_all<typename remove<T, tuple_dim<Ts1...>>::type, tuple_dim<Ts2...>>
     {};
 
     template<typename T1, typename T2>
@@ -53,10 +57,10 @@ namespace safe_types
     {};
 
     template<typename ...Ts1, typename ...Ts2>
-    struct trim<std::tuple<Ts1...>, std::tuple<Ts2...>>
+    struct trim<tuple_dim<Ts1...>, tuple_dim<Ts2...>>
     {
-        using num_type = typename remove_all<std::tuple<Ts1...>, std::tuple<Ts2...>>::type;
-        using den_type = typename remove_all<std::tuple<Ts2...>, std::tuple<Ts1...>>::type;
+        using num_type = typename remove_all<tuple_dim<Ts1...>, tuple_dim<Ts2...>>::type;
+        using den_type = typename remove_all<tuple_dim<Ts2...>, tuple_dim<Ts1...>>::type;
     };
 
     template<typename UnderlyingType>
@@ -76,12 +80,14 @@ namespace safe_types
         UnderlyingType m_value;
     };
 
-    template<typename UnderlyingType, typename Period, size_t NumeratorCount, typename ... Types>
+    template<typename UnderlyingType, typename Period, typename NumInDim, typename DenInDim = tuple_dim<>>
     class complex_type : public value_type<UnderlyingType>
     {
     public:
         using period = Period;
         using underlying_type = UnderlyingType;
+        using dimension_num = NumInDim;
+        using dimension_den = DenInDim;
 
         explicit constexpr complex_type(const UnderlyingType value)
             : value_type<UnderlyingType>{ value }
@@ -102,10 +108,10 @@ namespace safe_types
     };
 
     template<typename UnderlyingType, typename Period, typename DimType>
-    using simple_type = complex_type<UnderlyingType, Period, 1, DimType>;
+    using simple_type = complex_type<UnderlyingType, Period, tuple_dim<DimType>>;
 
     template<typename UnderlyingType, typename DimType>
-    using singleton = simple_type<UnderlyingType, std::ratio<1>, DimType>;
+    using singleton = simple_type<UnderlyingType, std::ratio<1>, tuple_dim<DimType>>;
 
 }
 
@@ -115,15 +121,17 @@ namespace std
         typename Period1,
         typename Und2,
         typename Period2,
-        size_t NumeratorCount,
-        typename ... Types>
+        typename NumDim1,
+        typename DenDim1,
+        typename NumDim2,
+        typename DenDim2>
         struct common_type<
-        safe_types::complex_type<Und1, Period1, NumeratorCount, Types...>,
-        safe_types::complex_type<Und2, Period2, NumeratorCount, Types...>>
+        safe_types::complex_type<Und1, Period1, NumDim1, DenDim1>,
+        safe_types::complex_type<Und2, Period2, NumDim2, DenDim2>>
     {
         using type = safe_types::complex_type<common_type_t<Und1, Und2>,
             ratio<_Gcd<Period1::num, Period2::num>::value,
-            _Lcm<Period1::den, Period2::den>::value>, NumeratorCount, Types...>;
+            _Lcm<Period1::den, Period2::den>::value>, NumDim1, DenDim1>;
     };
 }
 
@@ -132,9 +140,9 @@ namespace safe_types
     template<class To,
         class UT,
         class Period,
-        size_t NumeratorCount,
-        typename ... Types>
-        constexpr To cast(const complex_type<UT, Period, NumeratorCount, Types...>& ct)
+        typename NumDim1,
+        typename DenDim1>
+        constexpr To cast(const complex_type<UT, Period, NumDim1, DenDim1>& ct)
     {
         using _CF = std::ratio_divide<Period, typename To::period>;
 
@@ -156,32 +164,60 @@ namespace safe_types
                 / static_cast<_CR>(_CF::den))));
     }
 
-    template<typename FirstUnderlyingType, typename SecondUnderlyingType, typename Period1, typename Period2, size_t NumeratorCount, typename ... Types>
+    template<typename FirstUnderlyingType,
+        typename SecondUnderlyingType,
+        typename Period1,
+        typename Period2,
+        typename NumDim1,
+        typename DenDim1,
+        typename NumDim2,
+        typename DenDim2>
     constexpr bool
-        operator==(const complex_type<FirstUnderlyingType, Period1, NumeratorCount, Types...>& first, const complex_type<SecondUnderlyingType, Period2, NumeratorCount, Types...>& second) noexcept
+        operator==(const complex_type<FirstUnderlyingType, Period1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Period2, NumDim2, DenDim2>& second) noexcept
     {
-        using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Period1, NumeratorCount, Types...>, complex_type<SecondUnderlyingType, Period2, NumeratorCount, Types...>>;
+        using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Period1, NumDim1, DenDim1>, complex_type<SecondUnderlyingType, Period2, NumDim2, DenDim2>>;
         return cast<_CT>(first).value() == cast<_CT>(second).value();
     }
 
-    template<typename FirstUnderlyingType, typename SecondUnderlyingType, typename Period1, typename Period2, size_t NumeratorCount, typename ... Types>
+    template<typename FirstUnderlyingType,
+        typename SecondUnderlyingType,
+        typename Period1,
+        typename Period2,
+        typename NumDim1,
+        typename DenDim1,
+        typename NumDim2,
+        typename DenDim2>
     constexpr bool
-        operator!=(const complex_type<FirstUnderlyingType, Period1, NumeratorCount, Types...>& first, const complex_type<SecondUnderlyingType, Period2, NumeratorCount, Types...>& second) noexcept
+        operator!=(const complex_type<FirstUnderlyingType, Period1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Period2, NumDim2, DenDim2>& second) noexcept
     {
         return !(first == second);
     }
 
-    template<typename FirstUnderlyingType, typename SecondUnderlyingType, typename Period1, typename Period2, size_t NumeratorCount, typename ... Types>
-    constexpr std::common_type_t<complex_type<FirstUnderlyingType, Period1, NumeratorCount, Types...>, complex_type<SecondUnderlyingType, Period2, NumeratorCount, Types...>>
-        operator+(const complex_type<FirstUnderlyingType, Period1, NumeratorCount, Types...>& first, const complex_type<SecondUnderlyingType, Period2, NumeratorCount, Types...>& second) noexcept
+    template<typename FirstUnderlyingType,
+        typename SecondUnderlyingType,
+        typename Period1,
+        typename Period2,
+        typename NumDim1,
+        typename DenDim1,
+        typename NumDim2,
+        typename DenDim2>
+    constexpr //std::common_type_t<complex_type<FirstUnderlyingType, Period1, NumDim1, DenDim1>, complex_type<SecondUnderlyingType, Period2, NumDim2, DenDim2>>
+        auto operator+(const complex_type<FirstUnderlyingType, Period1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Period2, NumDim2, DenDim2>& second) noexcept
     {
-        using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Period1, NumeratorCount, Types...>, complex_type<SecondUnderlyingType, Period2, NumeratorCount, Types...>>;
+        using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Period1, NumDim1, DenDim1>, complex_type<SecondUnderlyingType, Period2, NumDim2, DenDim2>>;
         return _CT(cast<_CT>(first).value() + cast<_CT>(second).value());
     }
 
-    template<typename FirstUnderlyingType, typename SecondUnderlyingType, typename Period1, typename Period2, size_t NumeratorCount, typename ... Types>
-    constexpr std::common_type_t<complex_type<FirstUnderlyingType, Period1, NumeratorCount, Types...>, complex_type<SecondUnderlyingType, Period2, NumeratorCount, Types...>>
-        operator-(const complex_type<FirstUnderlyingType, Period1, NumeratorCount, Types...>& first, const complex_type<SecondUnderlyingType, Period2, NumeratorCount, Types...>& second) noexcept
+    template<typename FirstUnderlyingType,
+        typename SecondUnderlyingType,
+        typename Period1,
+        typename Period2,
+        typename NumDim1,
+        typename DenDim1,
+        typename NumDim2,
+        typename DenDim2>
+    constexpr auto //std::common_type_t<complex_type<FirstUnderlyingType, Period1, NumDim1, DenDim1>, complex_type<SecondUnderlyingType, Period2, NumDim2, DenDim2>>
+        operator-(const complex_type<FirstUnderlyingType, Period1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Period2, NumDim2, DenDim2>& second) noexcept
     {
         return first + (-second);
     }
