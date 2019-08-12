@@ -93,25 +93,8 @@ namespace safe_types
         using den = typename remove_all<tuple_dim<Ts2...>, tuple_dim<Ts1...>>::type;
     };
 
-    template<typename UnderlyingType>
-    class value_type
-    {
-    public:
-        constexpr explicit value_type(const UnderlyingType val) noexcept : m_value{ val }
-        {
-        }
-
-        constexpr UnderlyingType value() const noexcept
-        {
-            return m_value;
-        }
-
-    protected:
-        UnderlyingType m_value;
-    };
-
     template<typename UnderlyingType, typename Period, typename NumInDim, typename DenInDim = tuple_dim<>>
-    class complex_type : public value_type<UnderlyingType>
+    class complex_type
     {
     public:
         using period = Period;
@@ -119,8 +102,13 @@ namespace safe_types
         using dimension_num = NumInDim;
         using dimension_den = DenInDim;
 
+        constexpr UnderlyingType value() const noexcept
+        {
+            return m_value;
+        }
+
         explicit constexpr complex_type(const UnderlyingType value)
-            : value_type<UnderlyingType>{ value }
+            : m_value { value }
         {
         }
 
@@ -197,6 +185,9 @@ namespace safe_types
         {
             return stream << ct.value();
         }
+
+    private:
+        UnderlyingType m_value;
     };
 
     template<typename T>
