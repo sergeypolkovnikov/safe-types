@@ -106,7 +106,7 @@ namespace safe_types
             return m_value;
         }
 
-    private:
+    protected:
         UnderlyingType m_value;
     };
 
@@ -122,7 +122,11 @@ namespace safe_types
         explicit constexpr complex_type(const UnderlyingType value)
             : value_type<UnderlyingType>{ value }
         {
+        }
 
+        constexpr complex_type operator+() const
+        {
+            return complex_type{ value() };
         }
 
         constexpr complex_type operator-() const
@@ -130,7 +134,63 @@ namespace safe_types
             return complex_type{ -value() };
         }
         
+        constexpr complex_type& operator++()
+        {
+            ++m_value;
+            return (*this);
+        }
 
+        constexpr complex_type operator++(int)
+        {
+            return (complex_type(m_value++));
+        }
+
+        constexpr complex_type& operator--()
+        {
+            --m_value;
+            return (*this);
+        }
+
+        constexpr complex_type operator--(int)
+        {
+            return (complex_type(m_value--));
+        }
+
+        constexpr complex_type& operator+=(const complex_type& right)
+        {
+            m_value += right.m_value;
+            return (*this);
+        }
+
+        constexpr complex_type& operator-=(const complex_type& right)
+        {
+            m_value -= right.m_value;
+            return (*this);
+        }
+
+        constexpr complex_type& operator*=(const underlying_type& right)
+        {
+            m_value *= right;
+            return (*this);
+        }
+
+        constexpr complex_type& operator/=(const underlying_type& right)
+        {
+            m_value /= right;
+            return (*this);
+        }
+
+        constexpr complex_type& operator%=(const underlying_type& right)
+        {
+            m_value %= right;
+            return (*this);
+        }
+
+        constexpr complex_type& operator%=(const complex_type& right)
+        {
+            m_value %= right.count();
+            return (*this);
+        }
 
         template<typename Stream>
         friend Stream& operator <<(Stream& stream, const complex_type& ct)
@@ -199,6 +259,15 @@ namespace std
         using type = safe_types::complex_type<common_type_t<Und1, Und2>,
             ratio<safe_types::_gcd<Ratio1::num, Ratio2::num>::value,
             safe_types::_lcm<Ratio1::den, Ratio2::den>::value>, NumDim1, DenDim1>;
+    };
+
+    template<typename UnderlyingType, typename Ratio, typename NumDim, typename DenDim>
+    struct hash< safe_types::complex_type<UnderlyingType, Ratio, NumDim, DenDim> >
+    {
+        size_t operator() (const safe_types::complex_type<UnderlyingType, Ratio, NumDim, DenDim>& ct) const noexcept
+        {
+            return std::hash<UnderlyingType>{}(ct.value());
+        }
     };
 }
 
@@ -400,6 +469,33 @@ namespace safe_types
             common_underlying,
             complex_type<common_underlying, common_ratio, common_dim_type::num, common_dim_type::den>>;
         return common{ first.value() / second.value() };
+    }
+
+    template<typename UnderlyingType,
+        typename Ratio1,
+        typename NumDim1,
+        typename DenDim1,
+        typename T>
+        constexpr auto operator%(const complex_type<UnderlyingType, Ratio1, NumDim1, DenDim1>& first, const T& val) noexcept
+    {
+        using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, NumDim1, DenDim1>;
+        return type{ first.value() % val };
+    }
+
+    template<typename FirstUnderlyingType,
+        typename SecondUnderlyingType,
+        typename Ratio1,
+        typename Ratio2,
+        typename NumDim1,
+        typename DenDim1,
+        typename NumDim2,
+        typename DenDim2>
+        constexpr auto operator%(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+    {
+        using div_dim_type = trim<join<NumDim1, DenDim2>::type, join<DenDim1, NumDim2>::type>;
+        static_assert(is_degenerated<div_dim_type::num, div_dim_type::den>::value, "Types are not the same dimensions. Operation % is not allowed");
+        using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>, complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>>;
+        return _CT(cast<_CT>(first).value() % cast<_CT>(second).value());
     }
 
 }
