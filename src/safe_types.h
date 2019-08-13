@@ -302,8 +302,8 @@ namespace safe_types
     constexpr bool
         operator==(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
     {
-        using div_dim_type = trim<join<NumDim1, DenDim2>::type, join<DenDim1, NumDim2>::type>;
-        static_assert(is_degenerated<div_dim_type::num, div_dim_type::den>::value, "Types are not the same dimensions. Operations +, -, <, == etc are not allowed");
+        using div_dim_type = trim<typename join<NumDim1, DenDim2>::type, typename join<DenDim1, NumDim2>::type>;
+        static_assert(is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operations +, -, <, == etc are not allowed");
         using common_type = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>, complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>>;
         return cast<common_type>(first).value() == cast<common_type>(second).value();
     }
@@ -332,8 +332,8 @@ namespace safe_types
         typename DenDim2>
         constexpr bool operator<(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
     {
-        using div_dim_type = trim<join<NumDim1, DenDim2>::type, join<DenDim1, NumDim2>::type>;
-        static_assert(is_degenerated<div_dim_type::num, div_dim_type::den>::value, "Types are not the same dimensions. Operations +, -, <, == etc are not allowed");
+        using div_dim_type = trim<typename join<NumDim1, DenDim2>::type, typename join<DenDim1, NumDim2>::type>;
+        static_assert(is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operations +, -, <, == etc are not allowed");
         using common_type = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>, complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>>;
         return cast<common_type>(first).value() < cast<common_type>(second).value();
     }
@@ -387,8 +387,8 @@ namespace safe_types
         typename DenDim2>
     constexpr auto operator+(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
     {
-        using div_dim_type = trim<join<NumDim1, DenDim2>::type, join<DenDim1, NumDim2>::type>;
-        static_assert(is_degenerated<div_dim_type::num, div_dim_type::den>::value, "Types are not the same dimensions. Operations +, -, <, == etc are not allowed");
+        using div_dim_type = trim<typename join<NumDim1, DenDim2>::type, typename join<DenDim1, NumDim2>::type>;
+        static_assert(is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operations +, -, <, == etc are not allowed");
         using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>, complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>>;
         return _CT(cast<_CT>(first).value() + cast<_CT>(second).value());
     }
@@ -416,14 +416,14 @@ namespace safe_types
         typename DenDim2>
         constexpr auto operator*(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
     {
-        using common_dim_type = trim<join<NumDim1, NumDim2>::type, join<DenDim1, DenDim2>::type>;
+        using common_dim_type = trim<typename join<NumDim1, NumDim2>::type, typename join<DenDim1, DenDim2>::type>;
         using gcd12 = _gcd<Ratio1::num, Ratio2::den>;
         using gcd21 = _gcd<Ratio2::num, Ratio1::den>;
         using common_ratio = std::ratio<
             Ratio1::num / gcd12::value * Ratio2::num / gcd21::value,
             Ratio1::den / gcd21::value * Ratio2::den / gcd12::value >;
         using common_underlying = std::common_type_t<FirstUnderlyingType, SecondUnderlyingType>;
-        using common = complex_type<common_underlying, common_ratio, common_dim_type::num, common_dim_type::den>;
+        using common = complex_type<common_underlying, common_ratio, typename common_dim_type::num, typename common_dim_type::den>;
         return common{ first.value() * second.value() };
     }
 
@@ -448,7 +448,7 @@ namespace safe_types
         typename DenDim2>
         constexpr auto operator/(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
     {
-        using common_dim_type = trim<join<NumDim1, DenDim2>::type, join<DenDim1, NumDim2>::type>;
+        using common_dim_type = trim<typename join<NumDim1, DenDim2>::type, typename join<DenDim1, NumDim2>::type>;
         using gcd_num = _gcd<Ratio1::num, Ratio2::num>;
         using gcd_den = _gcd<Ratio2::den, Ratio1::den>;
         using common_ratio = std::ratio<
@@ -456,9 +456,9 @@ namespace safe_types
             Ratio1::den / gcd_den::value * Ratio2::num / gcd_num::value >;
         using common_underlying = std::common_type_t<FirstUnderlyingType, SecondUnderlyingType>;
         using common = std::conditional_t <
-            is_degenerated<common_dim_type::num, common_dim_type::den>::value,
+            is_degenerated<typename common_dim_type::num, typename common_dim_type::den>::value,
             common_underlying,
-            complex_type<common_underlying, common_ratio, common_dim_type::num, common_dim_type::den>>;
+            complex_type<common_underlying, common_ratio, typename common_dim_type::num, typename common_dim_type::den>>;
         return common{ first.value() / second.value() };
     }
 
@@ -483,8 +483,8 @@ namespace safe_types
         typename DenDim2>
         constexpr auto operator%(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
     {
-        using div_dim_type = trim<join<NumDim1, DenDim2>::type, join<DenDim1, NumDim2>::type>;
-        static_assert(is_degenerated<div_dim_type::num, div_dim_type::den>::value, "Types are not the same dimensions. Operation % is not allowed");
+        using div_dim_type = trim<typename join<NumDim1, DenDim2>::type, typename join<DenDim1, NumDim2>::type>;
+        static_assert(is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operation % is not allowed");
         using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>, complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>>;
         return _CT(cast<_CT>(first).value() % cast<_CT>(second).value());
     }
