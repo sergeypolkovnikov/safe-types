@@ -6,11 +6,10 @@
 
 #include "physical_types.h"
 
-class HorizontalDim;
-using Horizontal = safe_types::singleton<int, HorizontalDim>;
-
 TEST_CASE("test singleton equality", "[singleton]")
 {
+    class HorizontalDim;
+    using Horizontal = safe_types::singleton<int, HorizontalDim>;
     Horizontal h1{ 1 };
     Horizontal h2{ 2 };
     REQUIRE(Horizontal{ 1 } != Horizontal{ 2 });
@@ -92,3 +91,35 @@ TEST_CASE("test complex in unordered set", "[complex]")
     REQUIRE(meters.find(safe_types::meters{ 3 }) == meters.end());
 }
 
+TEST_CASE("test strings", "[singleton]")
+{
+    class SomeStringDim;
+    using SomeString = safe_types::singleton<std::string, SomeStringDim>;
+    SomeString s{""};
+    REQUIRE(SomeString{"1"} == SomeString{ "1" });
+    std::unordered_set<SomeString> strings;
+    strings.insert(s);
+    REQUIRE(strings.find(SomeString{ "" }) != strings.end());
+    REQUIRE(strings.find(SomeString{ "1" }) == strings.end());
+}
+
+TEST_CASE("test order", "[complex]")
+{
+    using acceleration = decltype(std::declval<safe_types::millimeters>() / std::declval<safe_types::seconds>() / std::declval<safe_types::seconds>());
+    const auto g = acceleration{ 9800 };
+    const auto newtons1 = safe_types::kilograms{ 70 } * g;
+    const auto newtons2 = g * safe_types::kilograms{ 70 };
+    static_assert(!std::is_same_v<decltype(newtons1), decltype(newtons2)>, "types should not be equal");
+    // but
+    REQUIRE(newtons1 == newtons2);
+}
+
+TEST_CASE("test conversions", "[complex]")
+{
+    using meters_per_sec = decltype(std::declval<safe_types::meters>() / std::declval<safe_types::seconds>());
+    using kilometers_per_hour = decltype(std::declval<safe_types::kilometers>() / std::declval<safe_types::hours>());
+
+    const auto bykespeed_kmh = kilometers_per_hour{36};
+    const auto bykespeed_ms = meters_per_sec(bykespeed_kmh);
+    REQUIRE(bykespeed_ms.value() == 10);
+}
