@@ -51,8 +51,17 @@ namespace safe_types
         }
 
         template<typename... Dims>
-        struct tuple_dim
-        {};
+        struct tuple_dim {};
+
+        template<typename Num, typename Den>
+        struct dim_ratio {};
+
+        template<typename ... Nums, typename ... Dens>
+        struct dim_ratio<tuple_dim<Nums...>, tuple_dim<Dens...>>
+        {
+            using num = tuple_dim<Nums...>;
+            using den = tuple_dim<Dens...>;
+        };
 
         template <typename T1, typename T2>
         struct join;
@@ -108,36 +117,58 @@ namespace safe_types
             using den = typename remove_all<tuple_dim<Ts2...>, tuple_dim<Ts1...>>::type;
         };
 
-    }
-    
-    
-    template<class ToUT,
-        typename RatioFrom,
-        typename RatioTo,
-        class UT>
-        constexpr std::enable_if_t<std::is_convertible_v<UT, intmax_t>, ToUT> cast_value(UT&& value)
-    {
-        using trans_coef = std::ratio_divide<RatioFrom, RatioTo>;
-        using common_und_type = std::common_type_t<ToUT, UT, intmax_t>;
+        template<typename T1, typename T2>
+        struct is_degenerated
+        {};
 
-        return (
-            trans_coef::num == 1 && trans_coef::den == 1
-            ? static_cast<ToUT>(value)
-            : trans_coef::num != 1 && trans_coef::den == 1
-            ? static_cast<ToUT>(static_cast<common_und_type>(value) * static_cast<common_und_type>(trans_coef::num))
-            : trans_coef::num == 1 && trans_coef::den != 1
-            ? static_cast<ToUT>(static_cast<common_und_type>(value) / static_cast<common_und_type>(trans_coef::den))
-            : static_cast<ToUT>(static_cast<common_und_type>(value) * static_cast<common_und_type>(trans_coef::num) / static_cast<common_und_type>(trans_coef::den))
-            );
-    }
+        template<>
+        struct is_degenerated<tuple_dim<>, tuple_dim<>> :
+            std::true_type
+        {};
 
-    template<class ToUT,
-        typename RatioFrom,
-        typename RatioTo,
-        class UT>
-        constexpr std::enable_if_t<!std::is_convertible_v<UT, intmax_t>, ToUT> cast_value(UT&& value)
-    {
-        return static_cast<ToUT>(std::move(value));
+        template<typename T1, typename T2, typename...Ts1, typename... Ts2>
+        struct is_degenerated<tuple_dim<T1, Ts1...>, tuple_dim<T2, Ts2...>> :
+            std::false_type
+        {};
+
+        template<typename T1, typename...Ts1>
+        struct is_degenerated<tuple_dim<T1, Ts1...>, tuple_dim<>> :
+            std::false_type
+        {};
+
+        template<typename T2, typename... Ts2>
+        struct is_degenerated<tuple_dim<>, tuple_dim<T2, Ts2...>> :
+            std::false_type
+        {};
+
+        template<class ToUT,
+            typename RatioFrom,
+            typename RatioTo,
+            class UT>
+            constexpr std::enable_if_t<std::is_convertible_v<UT, intmax_t>, ToUT> cast_value(UT&& value)
+        {
+            using trans_coef = std::ratio_divide<RatioFrom, RatioTo>;
+            using common_und_type = std::common_type_t<ToUT, UT, intmax_t>;
+
+            return (
+                trans_coef::num == 1 && trans_coef::den == 1
+                ? static_cast<ToUT>(value)
+                : trans_coef::num != 1 && trans_coef::den == 1
+                ? static_cast<ToUT>(static_cast<common_und_type>(value) * static_cast<common_und_type>(trans_coef::num))
+                : trans_coef::num == 1 && trans_coef::den != 1
+                ? static_cast<ToUT>(static_cast<common_und_type>(value) / static_cast<common_und_type>(trans_coef::den))
+                : static_cast<ToUT>(static_cast<common_und_type>(value) * static_cast<common_und_type>(trans_coef::num) / static_cast<common_und_type>(trans_coef::den))
+                );
+        }
+
+        template<class ToUT,
+            typename RatioFrom,
+            typename RatioTo,
+            class UT>
+            constexpr std::enable_if_t<!std::is_convertible_v<UT, intmax_t>, ToUT> cast_value(UT&& value)
+        {
+            return static_cast<ToUT>(std::move(value));
+        }
     }
 
     template<typename UnderlyingType, typename Period, typename NumInDim, typename DenInDim = internal::tuple_dim<>>
@@ -169,18 +200,18 @@ namespace safe_types
             typename NumDim,
             typename DenDim>
             constexpr complex_type(const complex_type<UT, Ratio, NumDim, DenDim>& other)
-            : m_value{ cast_value<underlying_type, Ratio, period>(other.value()) }
+            : m_value{ internal::cast_value<underlying_type, Ratio, period>(other.value()) }
         {
             using div_dim_type = internal::trim<typename internal::join<dimension_num, DenDim>::type, typename internal::join<dimension_den, NumDim>::type>;
             static_assert(internal::is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operation is vorbidden");
         }
 
         constexpr complex_type(const complex_type& other)
-            : m_value{ cast_value<underlying_type, complex_type::period, period>(other.m_value) }
+            : m_value{ internal::cast_value<underlying_type, complex_type::period, period>(other.m_value) }
         {
             using other_complex = std::decay_t<decltype(other)>;
             using other_ratio = other_complex::period;
-            m_value = cast_value<underlying_type, other_ratio, period>(other.m_value);
+            m_value = internal::cast_value<underlying_type, other_ratio, period>(other.m_value);
         }
 
         constexpr complex_type& operator=(const complex_type& other)
@@ -288,30 +319,6 @@ namespace safe_types
 
         template<typename CT, typename T>
         using _enable_if_is_complex = typename std::enable_if<_is_complex_type<CT>::value, T>::type;
-
-        template<typename T1, typename T2>
-        struct is_degenerated
-        {};
-
-        template<>
-        struct is_degenerated<tuple_dim<>, tuple_dim<>> :
-            std::true_type
-        {};
-
-        template<typename T1, typename T2, typename...Ts1, typename... Ts2>
-        struct is_degenerated<tuple_dim<T1, Ts1...>, tuple_dim<T2, Ts2...>> :
-            std::false_type
-        {};
-
-        template<typename T1, typename...Ts1>
-        struct is_degenerated<tuple_dim<T1, Ts1...>, tuple_dim<>> :
-            std::false_type
-        {};
-
-        template<typename T2, typename... Ts2>
-        struct is_degenerated<tuple_dim<>, tuple_dim<T2, Ts2...>> :
-            std::false_type
-        {};
     }
 
     template<typename UnderlyingType, typename Period, typename DimType>
@@ -363,7 +370,7 @@ namespace safe_types
     {
         using to_und_type = typename To::underlying_type;
         using to_period = typename To::period;
-        return static_cast<To>(cast_value<to_und_type, Period, to_period>(ct.value()));
+        return static_cast<To>(internal::cast_value<to_und_type, Period, to_period>(ct.value()));
     }
 
     template<typename FirstUnderlyingType,
@@ -381,7 +388,7 @@ namespace safe_types
         static_assert(internal::is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operations +, -, <, == etc are not allowed");
         using common_ut = std::common_type_t<FirstUnderlyingType, SecondUnderlyingType>;
         using common_ratio = safe_types::common_ratio<Ratio1, Ratio2>;
-        return cast_value<common_ut, Ratio1, common_ratio>(first.value()) == cast_value<common_ut, Ratio2, common_ratio>(second.value());
+        return internal::cast_value<common_ut, Ratio1, common_ratio>(first.value()) == internal::cast_value<common_ut, Ratio2, common_ratio>(second.value());
     }
 
     template<typename FirstUnderlyingType,
@@ -412,7 +419,7 @@ namespace safe_types
         static_assert(internal::is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operations +, -, <, == etc are not allowed");
         using common_ut = std::common_type_t<FirstUnderlyingType, SecondUnderlyingType>;
         using common_ratio = safe_types::common_ratio<Ratio1, Ratio2>;
-        return cast_value<common_ut, Ratio1, common_ratio>(first.value()) < cast_value<common_ut, Ratio2, common_ratio>(second.value());
+        return internal::cast_value<common_ut, Ratio1, common_ratio>(first.value()) < internal::cast_value<common_ut, Ratio2, common_ratio>(second.value());
     }
 
     template<typename FirstUnderlyingType,
