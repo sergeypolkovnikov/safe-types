@@ -117,29 +117,37 @@ namespace safe_types
             using den = typename remove_all<tuple_dim<Ts2...>, tuple_dim<Ts1...>>::type;
         };
 
-        template<typename T1, typename T2>
+        template<typename T1>
         struct is_degenerated
         {};
 
         template<>
-        struct is_degenerated<tuple_dim<>, tuple_dim<>> :
+        struct is_degenerated<dim_ratio<tuple_dim<>, tuple_dim<>>> :
             std::true_type
         {};
 
         template<typename T1, typename T2, typename...Ts1, typename... Ts2>
-        struct is_degenerated<tuple_dim<T1, Ts1...>, tuple_dim<T2, Ts2...>> :
+        struct is_degenerated<dim_ratio<tuple_dim<T1, Ts1...>, tuple_dim<T2, Ts2...>>> :
             std::false_type
         {};
 
         template<typename T1, typename...Ts1>
-        struct is_degenerated<tuple_dim<T1, Ts1...>, tuple_dim<>> :
+        struct is_degenerated<dim_ratio<tuple_dim<T1, Ts1...>, tuple_dim<>>> :
             std::false_type
         {};
 
         template<typename T2, typename... Ts2>
-        struct is_degenerated<tuple_dim<>, tuple_dim<T2, Ts2...>> :
+        struct is_degenerated<dim_ratio<tuple_dim<>, tuple_dim<T2, Ts2...>>> :
             std::false_type
         {};
+
+        template<typename T1, typename T2>
+        using trim_is_degenerated_v =
+            typename safe_types::internal::is_degenerated<
+                safe_types::internal::dim_ratio<
+                    typename safe_types::internal::trim<T1, T2>::num,
+                    typename safe_types::internal::trim<T1, T2>::den
+            >>::value;
 
         template<class ToUT,
             typename RatioFrom,
@@ -169,16 +177,61 @@ namespace safe_types
         {
             return static_cast<ToUT>(std::move(value));
         }
+
+    }
+}
+
+namespace std
+{
+    template<typename ...Num1, typename ...Den1, typename ...Num2, typename ...Den2>
+    struct is_same< 
+        safe_types::internal::dim_ratio<
+            safe_types::internal::tuple_dim<Num1...>,
+            safe_types::internal::tuple_dim<Den1...>>,
+        safe_types::internal::dim_ratio<
+            safe_types::internal::tuple_dim<Num2...>,
+            safe_types::internal::tuple_dim<Den2...>>>
+        : conditional_t<
+            safe_types::internal::is_degenerated<
+                safe_types::internal::dim_ratio<
+                    typename safe_types::internal::trim<
+                        typename safe_types::internal::join<
+                            safe_types::internal::tuple_dim<Num1...>, 
+                            safe_types::internal::tuple_dim<Den2...>>::type,
+                        typename safe_types::internal::join<
+                            safe_types::internal::tuple_dim<Num2...>,
+                            safe_types::internal::tuple_dim<Den1...>>::type>::num,
+                    typename safe_types::internal::trim<
+                        typename safe_types::internal::join<
+                            safe_types::internal::tuple_dim<Num1...>,
+                            safe_types::internal::tuple_dim<Den2...>>::type,
+                        typename safe_types::internal::join<
+                            safe_types::internal::tuple_dim<Num2...>,
+                            safe_types::internal::tuple_dim<Den1...>>::type>::den
+                >>::value,
+            true_type,
+            false_type>
+    {};
+}
+
+namespace safe_types
+{
+    namespace internal
+    {
+        template<typename Dim1, typename Dim2>
+        using DimIsConvertible = std::enable_if_t<std::is_same<Dim1, Dim2>::value>;
     }
 
-    template<typename UnderlyingType, typename Period, typename NumInDim, typename DenInDim = internal::tuple_dim<>>
-    class complex_type
+    template<typename UnderlyingType, typename Ratio, typename DimRatio>
+    class complex_type {};
+
+    template<typename UnderlyingType, intmax_t Num, intmax_t Den, typename ... DimNums, typename ... DimDens>
+    class complex_type<UnderlyingType, std::ratio<Num, Den>, internal::dim_ratio<internal::tuple_dim<DimNums...>, internal::tuple_dim<DimDens...>>>
     {
     public:
-        using period = Period;
+        using period = std::ratio<Num, Den>;
         using underlying_type = UnderlyingType;
-        using dimension_num = NumInDim;
-        using dimension_den = DenInDim;
+        using dimensions = internal::dim_ratio<internal::tuple_dim<DimNums...>, internal::tuple_dim<DimDens...>>;
 
         constexpr UnderlyingType value() const noexcept
         {
@@ -195,15 +248,11 @@ namespace safe_types
         {
         }
 
-        template<class UT,
-            class Ratio,
-            typename NumDim,
-            typename DenDim>
-            constexpr complex_type(const complex_type<UT, Ratio, NumDim, DenDim>& other)
-            : m_value{ internal::cast_value<underlying_type, Ratio, period>(other.value()) }
+        template<typename UnderlyingType, intmax_t Num, intmax_t Den, typename ... DimNums, typename ... DimDens, 
+            typename = internal::DimIsConvertible<internal::dim_ratio<internal::tuple_dim<DimNums...>, internal::tuple_dim<DimDens...>>, dimensions>>
+        constexpr complex_type(const complex_type<UnderlyingType, std::ratio<Num, Den>, internal::dim_ratio<internal::tuple_dim<DimNums...>, internal::tuple_dim<DimDens...>>>& other)
+            : m_value{ internal::cast_value<underlying_type, std::ratio<Num, Den>, period>(other.value()) }
         {
-            using div_dim_type = internal::trim<typename internal::join<dimension_num, DenDim>::type, typename internal::join<dimension_den, NumDim>::type>;
-            static_assert(internal::is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operation is vorbidden");
         }
 
         constexpr complex_type(const complex_type& other)
@@ -313,19 +362,19 @@ namespace safe_types
         struct _is_complex_type : std::false_type
         {};
 
-        template<typename UT, typename Ratio, typename Num, typename Den>
-        struct _is_complex_type<complex_type<UT, Ratio, Num, Den>> : std::true_type
+        template<typename UT, typename Ratio, typename DimRatio>
+        struct _is_complex_type<complex_type<UT, Ratio, DimRatio>> : std::true_type
         {};
 
         template<typename CT, typename T>
         using _enable_if_is_complex = typename std::enable_if<_is_complex_type<CT>::value, T>::type;
     }
 
-    template<typename UnderlyingType, typename Period, typename DimType>
-    using simple_type = complex_type<UnderlyingType, Period, internal::tuple_dim<DimType>>;
+    template<typename UnderlyingType, typename Ratio, typename DimType>
+    using simple_type = complex_type<UnderlyingType, Ratio, internal::dim_ratio<internal::tuple_dim<DimType>, internal::tuple_dim<>>>;
 
     template<typename UnderlyingType, typename DimType>
-    using singleton = simple_type<UnderlyingType, std::ratio<1>, internal::tuple_dim<DimType>>;
+    using singleton = simple_type<UnderlyingType, std::ratio<1>, DimType>;
 
     template<typename Ratio1, typename Ratio2>
     using common_ratio = std::ratio<internal::gcd(Ratio1::num, Ratio2::num), internal::lcm(Ratio1::den, Ratio2::den)>;
@@ -338,21 +387,19 @@ namespace std
         typename Ratio1,
         typename Und2,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
+        typename Dim1,
+        typename Dim2>
         struct common_type<
-            safe_types::complex_type<Und1, Ratio1, NumDim1, DenDim1>,
-            safe_types::complex_type<Und2, Ratio2, NumDim2, DenDim2>>
+            safe_types::complex_type<Und1, Ratio1, Dim1>,
+            safe_types::complex_type<Und2, Ratio2, Dim2>>
     {
-        using type = safe_types::complex_type<common_type_t<Und1, Und2>, safe_types::common_ratio<Ratio1, Ratio2>, NumDim1, DenDim1>;
+        using type = safe_types::complex_type<common_type_t<Und1, Und2>, safe_types::common_ratio<Ratio1, Ratio2>, Dim1>;
     };
 
-    template<typename UnderlyingType, typename Ratio, typename NumDim, typename DenDim>
-    struct hash< safe_types::complex_type<UnderlyingType, Ratio, NumDim, DenDim> >
+    template<typename UnderlyingType, typename Ratio, typename Dim>
+    struct hash< safe_types::complex_type<UnderlyingType, Ratio, Dim> >
     {
-        size_t operator() (const safe_types::complex_type<UnderlyingType, Ratio, NumDim, DenDim>& ct) const noexcept
+        size_t operator() (const safe_types::complex_type<UnderlyingType, Ratio, Dim>& ct) const noexcept
         {
             return std::hash<UnderlyingType>{}(ct.value());
         }
@@ -361,31 +408,27 @@ namespace std
 
 namespace safe_types
 {
-    template<class To,
-        class UT,
-        class Period,
-        typename NumDim1,
-        typename DenDim1>
-        constexpr std::enable_if_t<std::is_convertible_v<UT, intmax_t>, To> cast(const complex_type<UT, Period, NumDim1, DenDim1>& ct)
+    template<typename To,
+        typename UT,
+        typename Ratio,
+        typename Dim>
+        constexpr std::enable_if_t<std::is_convertible_v<UT, intmax_t>, To> cast(const complex_type<UT, Ratio, Dim>& ct)
     {
         using to_und_type = typename To::underlying_type;
         using to_period = typename To::period;
-        return static_cast<To>(internal::cast_value<to_und_type, Period, to_period>(ct.value()));
+        return static_cast<To>(internal::cast_value<to_und_type, Ratio, to_period>(ct.value()));
     }
 
     template<typename FirstUnderlyingType,
         typename SecondUnderlyingType,
         typename Ratio1,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
+        typename Dim1,
+        typename Dim2,
+        typename = internal::DimIsConvertible<Dim1, Dim2>>
         constexpr bool
-        operator==(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+        operator==(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
-        using div_dim_type = internal::trim<typename internal::join<NumDim1, DenDim2>::type, typename internal::join<DenDim1, NumDim2>::type>;
-        static_assert(internal::is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operations +, -, <, == etc are not allowed");
         using common_ut = std::common_type_t<FirstUnderlyingType, SecondUnderlyingType>;
         using common_ratio = safe_types::common_ratio<Ratio1, Ratio2>;
         return internal::cast_value<common_ut, Ratio1, common_ratio>(first.value()) == internal::cast_value<common_ut, Ratio2, common_ratio>(second.value());
@@ -395,12 +438,11 @@ namespace safe_types
         typename SecondUnderlyingType,
         typename Ratio1,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
+        typename Dim1,
+        typename Dim2,
+        typename = internal::DimIsConvertible<Dim1, Dim2>>
         constexpr bool
-        operator!=(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+        operator!=(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
         return !(first == second);
     }
@@ -409,14 +451,11 @@ namespace safe_types
         typename SecondUnderlyingType,
         typename Ratio1,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
-        constexpr bool operator<(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+        typename Dim1,
+        typename Dim2,
+        typename = internal::DimIsConvertible<Dim1, Dim2>>
+        constexpr bool operator<(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
-        using div_dim_type = internal::trim<typename internal::join<NumDim1, DenDim2>::type, typename internal::join<DenDim1, NumDim2>::type>;
-        static_assert(internal::is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operations +, -, <, == etc are not allowed");
         using common_ut = std::common_type_t<FirstUnderlyingType, SecondUnderlyingType>;
         using common_ratio = safe_types::common_ratio<Ratio1, Ratio2>;
         return internal::cast_value<common_ut, Ratio1, common_ratio>(first.value()) < internal::cast_value<common_ut, Ratio2, common_ratio>(second.value());
@@ -426,11 +465,10 @@ namespace safe_types
         typename SecondUnderlyingType,
         typename Ratio1,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
-        constexpr bool operator>(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+        typename Dim1,
+        typename Dim2,
+        typename = std::is_same<Dim1, Dim2>>
+        constexpr bool operator>(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
         return second < first;
     }
@@ -439,11 +477,10 @@ namespace safe_types
         typename SecondUnderlyingType,
         typename Ratio1,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
-        constexpr bool operator<=(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+        typename Dim1,
+        typename Dim2,
+        typename = internal::DimIsConvertible<Dim1, Dim2>>
+        constexpr bool operator<=(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
         return !(second < first);
     }
@@ -452,11 +489,10 @@ namespace safe_types
         typename SecondUnderlyingType,
         typename Ratio1,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
-        constexpr bool operator>=(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+        typename Dim1,
+        typename Dim2,
+        typename = internal::DimIsConvertible<Dim1, Dim2>>
+        constexpr bool operator>=(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
         return !(first < second);
     }
@@ -465,15 +501,12 @@ namespace safe_types
         typename SecondUnderlyingType,
         typename Ratio1,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
-        constexpr auto operator+(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+        typename Dim1,
+        typename Dim2,
+        typename = internal::DimIsConvertible<Dim1, Dim2>>
+        constexpr auto operator+(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
-        using div_dim_type = internal::trim<typename internal::join<NumDim1, DenDim2>::type, typename internal::join<DenDim1, NumDim2>::type>;
-        static_assert(internal::is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operations +, -, <, == etc are not allowed");
-        using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>, complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>>;
+        using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, Dim1>, complex_type<SecondUnderlyingType, Ratio2, Dim2>>;
         return _CT(cast<_CT>(first).value() + cast<_CT>(second).value());
     }
 
@@ -481,11 +514,10 @@ namespace safe_types
         typename SecondUnderlyingType,
         typename Ratio1,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
-        constexpr auto operator-(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+        typename Dim1,
+        typename Dim2,
+        typename = internal::DimIsConvertible<Dim1, Dim2>>
+        constexpr auto operator-(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
         return first + (-second);
     }
@@ -494,31 +526,31 @@ namespace safe_types
         typename SecondUnderlyingType,
         typename Ratio1,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
-        constexpr auto operator*(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+        typename Dim1,
+        typename Dim2>
+        constexpr auto operator*(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
-        using common_dim_type = internal::trim<typename internal::join<NumDim1, NumDim2>::type, typename internal::join<DenDim1, DenDim2>::type>;
+        using common_dim_type = internal::trim<typename internal::join<typename Dim1::num, typename Dim2::num>::type, typename internal::join<typename Dim1::den, typename Dim2::den>::type>;
         constexpr auto gcd12 = internal::gcd(Ratio1::num, Ratio2::den);
         constexpr auto gcd21 = internal::gcd(Ratio2::num, Ratio1::den);
         using common_ratio = std::ratio<
             Ratio1::num / gcd12 * Ratio2::num / gcd21,
             Ratio1::den / gcd21 * Ratio2::den / gcd12 >;
         using common_underlying = std::common_type_t<FirstUnderlyingType, SecondUnderlyingType>;
-        using common = complex_type<common_underlying, common_ratio, typename common_dim_type::num, typename common_dim_type::den>;
+        using common = std::conditional_t <
+            internal::is_degenerated<internal::dim_ratio<typename common_dim_type::num, typename common_dim_type::den>>::value,
+            common_underlying,
+            complex_type<common_underlying, common_ratio, internal::dim_ratio<typename common_dim_type::num, typename common_dim_type::den>>>;
         return common{ first.value() * second.value() };
     }
 
     template<typename UnderlyingType,
         typename Ratio1,
-        typename NumDim1,
-        typename DenDim1,
+        typename Dim,
         typename T>
-        constexpr auto operator/(const complex_type<UnderlyingType, Ratio1, NumDim1, DenDim1>& first, const T& val) noexcept
+        constexpr auto operator/(const complex_type<UnderlyingType, Ratio1, Dim>& first, const T& val) noexcept
     {
-        using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, NumDim1, DenDim1>;
+        using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, Dim>;
         return type{ first.value() / val };
     }
 
@@ -526,13 +558,11 @@ namespace safe_types
         typename SecondUnderlyingType,
         typename Ratio1,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
-        constexpr auto operator/(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+        typename Dim1,
+        typename Dim2>
+        constexpr auto operator/(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
-        using common_dim_type = internal::trim<typename internal::join<NumDim1, DenDim2>::type, typename internal::join<DenDim1, NumDim2>::type>;
+        using common_dim_type = internal::trim<typename internal::join<typename Dim1::num, typename Dim2::den>::type, typename internal::join<typename Dim1::den, typename Dim2::num>::type>;
         constexpr auto gcd_num = internal::gcd(Ratio1::num, Ratio2::num);
         constexpr auto gcd_den = internal::gcd(Ratio2::den, Ratio1::den);
         using common_ratio = std::ratio<
@@ -540,18 +570,17 @@ namespace safe_types
             Ratio1::den / gcd_den * Ratio2::num / gcd_num >;
         using common_underlying = std::common_type_t<FirstUnderlyingType, SecondUnderlyingType>;
         using common = std::conditional_t <
-            internal::is_degenerated<typename common_dim_type::num, typename common_dim_type::den>::value,
+            internal::is_degenerated<internal::dim_ratio<typename common_dim_type::num, typename common_dim_type::den>>::value,
             common_underlying,
-            complex_type<common_underlying, common_ratio, typename common_dim_type::num, typename common_dim_type::den>>;
+            complex_type<common_underlying, common_ratio, internal::dim_ratio<typename common_dim_type::num, typename common_dim_type::den>>>;
         return common{ first.value() / second.value() };
     }
 
     template<typename UnderlyingType,
         typename Ratio1,
-        typename NumDim1,
-        typename DenDim1,
+        typename Dim,
         typename T>
-        constexpr auto operator%(const complex_type<UnderlyingType, Ratio1, NumDim1, DenDim1>& first, const T& val) noexcept
+        constexpr auto operator%(const complex_type<UnderlyingType, Ratio1, Dim>& first, const T& val) noexcept
     {
         using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, NumDim1, DenDim1>;
         return type{ first.value() % val };
@@ -561,15 +590,11 @@ namespace safe_types
         typename SecondUnderlyingType,
         typename Ratio1,
         typename Ratio2,
-        typename NumDim1,
-        typename DenDim1,
-        typename NumDim2,
-        typename DenDim2>
-        constexpr auto operator%(const complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>& first, const complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>& second) noexcept
+        typename Dim1,
+        typename Dim2>
+        constexpr auto operator%(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
-        using div_dim_type = internal::trim<typename internal::join<NumDim1, DenDim2>::type, typename internal::join<DenDim1, NumDim2>::type>;
-        static_assert(internal::is_degenerated<typename div_dim_type::num, typename div_dim_type::den>::value, "Types are not the same dimensions. Operation % is not allowed");
-        using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, NumDim1, DenDim1>, complex_type<SecondUnderlyingType, Ratio2, NumDim2, DenDim2>>;
+        using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, Dim1>, complex_type<SecondUnderlyingType, Ratio2, Dim2>>;
         return _CT(cast<_CT>(first).value() % cast<_CT>(second).value());
     }
 

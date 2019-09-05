@@ -109,8 +109,6 @@ TEST_CASE("test order", "[complex]")
     const auto g = acceleration{ 9800 };
     const auto newtons1 = safe_types::kilograms{ 70 } * g;
     const auto newtons2 = g * safe_types::kilograms{ 70 };
-    static_assert(!std::is_same_v<decltype(newtons1), decltype(newtons2)>, "types should not be equal");
-    // but
     REQUIRE(newtons1 == newtons2);
 }
 
