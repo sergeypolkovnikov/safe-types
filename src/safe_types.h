@@ -50,6 +50,24 @@ namespace safe_types
             return abs(first * second) / gcd(first, second);
         }
 
+        template<typename T, bool Val = std::is_arithmetic<std::decay_t<T>>::value>
+        struct parameter_for_copy
+        {
+            using type = const T;
+        };
+
+        template<typename T>
+        struct parameter_for_copy<T, false>
+        {
+            using type = const T&;
+        };
+
+        template<typename T>
+        using parameter_for_copy_t = typename parameter_for_copy<T>::type;
+
+        template<typename T>
+        using enable_if_not_arithmetic = std::enable_if<std::is_arithmetic<T>::value>;
+
         template<typename... Dims>
         struct tuple_dim {};
 
@@ -238,11 +256,12 @@ namespace safe_types
             return m_value;
         }
 
-        explicit constexpr complex_type(const UnderlyingType& value)
+        explicit constexpr complex_type(internal::parameter_for_copy_t<UnderlyingType> value)
             : m_value{ value }
         {
         }
 
+        template<typename = internal::enable_if_not_arithmetic<UnderlyingType>>
         explicit constexpr complex_type(UnderlyingType&& value)
             : m_value{ std::move(value) }
         {
@@ -322,19 +341,19 @@ namespace safe_types
             return (*this);
         }
 
-        constexpr complex_type& operator*=(const underlying_type& right)
+        constexpr complex_type& operator*=(internal::parameter_for_copy_t<UnderlyingType> right)
         {
             m_value *= right;
             return (*this);
         }
 
-        constexpr complex_type& operator/=(const underlying_type& right)
+        constexpr complex_type& operator/=(internal::parameter_for_copy_t<UnderlyingType> right)
         {
             m_value /= right;
             return (*this);
         }
 
-        constexpr complex_type& operator%=(const underlying_type& right)
+        constexpr complex_type& operator%=(internal::parameter_for_copy_t<UnderlyingType> right)
         {
             m_value %= right;
             return (*this);
@@ -342,7 +361,7 @@ namespace safe_types
 
         constexpr complex_type& operator%=(const complex_type& right)
         {
-            m_value %= right.count();
+            m_value %= right.value();
             return (*this);
         }
 
@@ -548,10 +567,40 @@ namespace safe_types
         typename Ratio1,
         typename Dim,
         typename T>
+        constexpr auto operator*(const complex_type<UnderlyingType, Ratio1, Dim>& first, const T& val) noexcept
+    {
+        using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, Dim>;
+        return type{ first.value() * val };
+    }
+
+    template<typename UnderlyingType,
+        typename Ratio1,
+        typename Dim,
+        typename T>
+        constexpr auto operator*(const T& val, const complex_type<UnderlyingType, Ratio1, Dim>& first) noexcept
+    {
+        using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, Dim>;
+        return type{ first.value() * val };
+    }
+
+    template<typename UnderlyingType,
+        typename Ratio1,
+        typename Dim,
+        typename T>
         constexpr auto operator/(const complex_type<UnderlyingType, Ratio1, Dim>& first, const T& val) noexcept
     {
         using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, Dim>;
         return type{ first.value() / val };
+    }
+
+    template<typename UnderlyingType,
+        typename Ratio1,
+        typename Dim,
+        typename T>
+        constexpr auto operator/(const T& val, const complex_type<UnderlyingType, Ratio1, Dim>& first) noexcept
+    {
+        using type = complex_type<std::common_type_t<UnderlyingType, T>, std::ratio<Ratio1::den, Ratio1::num>, internal::dim_ratio<Dim::den, Dim::num>>;
+        return type{ val / first.value() };
     }
 
     template<typename FirstUnderlyingType,
@@ -582,7 +631,7 @@ namespace safe_types
         typename T>
         constexpr auto operator%(const complex_type<UnderlyingType, Ratio1, Dim>& first, const T& val) noexcept
     {
-        using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, NumDim1, DenDim1>;
+        using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, Dim>;
         return type{ first.value() % val };
     }
 
@@ -591,7 +640,8 @@ namespace safe_types
         typename Ratio1,
         typename Ratio2,
         typename Dim1,
-        typename Dim2>
+        typename Dim2,
+        typename = internal::DimIsConvertible<Dim1, Dim2>>
         constexpr auto operator%(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
     {
         using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, Dim1>, complex_type<SecondUnderlyingType, Ratio2, Dim2>>;

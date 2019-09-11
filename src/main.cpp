@@ -8,6 +8,8 @@
 
 TEST_CASE("test singleton equality", "[singleton]")
 {
+    static_assert(std::is_same_v<safe_types::internal::parameter_for_copy_t<int>, const int>, "parameter_for_copy_t should be int");
+
     class HorizontalDim;
     using Horizontal = safe_types::singleton<int, HorizontalDim>;
     Horizontal h1{ 1 };
@@ -120,4 +122,50 @@ TEST_CASE("test conversions", "[complex]")
     const auto bykespeed_kmh = kilometers_per_hour{36};
     const auto bykespeed_ms = meters_per_sec(bykespeed_kmh);
     REQUIRE(bykespeed_ms.value() == 10);
+}
+
+TEST_CASE("test div modulus int", "[complex]")
+{
+    const auto bytes_count = safe_types::bytes{ 1025 };
+    const auto modul_bytes_count = bytes_count % 1024;
+    REQUIRE(modul_bytes_count.value() == 1);
+}
+
+TEST_CASE("test div modulus", "[complex]")
+{
+    const auto bytes_count = safe_types::bytes{1025};
+    const auto modul_bytes_count = bytes_count % safe_types::kilobytes{ 1 };
+    REQUIRE(modul_bytes_count.value() == 1);
+}
+
+TEST_CASE("test degenerated multiply", "[complex]")
+{
+    using DenomSeconds = decltype(1 / std::declval<safe_types::seconds>());
+    const auto degenerated_value = safe_types::hours{ 1 } * DenomSeconds{ 60 };
+    INFO(typeid(decltype(degenerated_value)).name());
+    static_assert(std::is_same_v<std::decay_t<decltype(degenerated_value)>, DenomSeconds::underlying_type>, "degenerated value should be the same type of seconds");
+    REQUIRE(degenerated_value == 60);
+}
+
+struct A
+{
+    static size_t count;
+    A() { count++; }
+    A(A const&) { count++; }
+    A& operator= (A const&) { count++; return *this; }
+    A(A &&) { }
+    A& operator= (A &&) { return *this; }
+};
+
+size_t A::count = 0;
+
+TEST_CASE("copy", "[complex]")
+{
+    class ADim;
+    using AS = safe_types::singleton<A, ADim>;
+    AS a{ A() }; //1
+    AS b{ A() }; //2
+    auto c = b; //3
+    auto d = std::move(b); // 3
+    REQUIRE(A::count == 3);
 }
