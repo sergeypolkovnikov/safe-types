@@ -256,6 +256,12 @@ namespace safe_types
             return m_value;
         }
 
+        template<typename = std::enable_if<std::is_default_constructible<typename underlying_type>::value>::type>
+        constexpr complex_type()
+            : m_value {}
+        {
+        }
+
         explicit constexpr complex_type(internal::parameter_for_copy_t<UnderlyingType> value)
             : m_value{ value }
         {
@@ -278,13 +284,14 @@ namespace safe_types
             : m_value{ internal::cast_value<underlying_type, complex_type::period, period>(other.m_value) }
         {
             using other_complex = std::decay_t<decltype(other)>;
-            using other_ratio = other_complex::period;
+            using other_ratio = typename other_complex::period;
             m_value = internal::cast_value<underlying_type, other_ratio, period>(other.m_value);
         }
 
         constexpr complex_type& operator=(const complex_type& other)
         {
             m_value = other.m_value;
+            return *this;
         }
 
         constexpr complex_type(complex_type&& other)
@@ -295,6 +302,7 @@ namespace safe_types
         constexpr complex_type& operator=(complex_type&& other)
         {
             m_value = std::move(other.m_value);
+            return *this;
         }
 
         constexpr complex_type operator+() const
