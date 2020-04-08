@@ -105,6 +105,25 @@ TEST_CASE("test strings", "[singleton]")
     REQUIRE(strings.find(SomeString{ "1" }) == strings.end());
 }
 
+TEST_CASE("test internal::trim", "[complex]")
+{
+    using type1 = safe_types::internal::tuple_dim<safe_types::DistanceDim, safe_types::DurationDim>;
+    using sametype = safe_types::internal::tuple_dim<safe_types::DurationDim, safe_types::DistanceDim>;
+    using type2 = safe_types::internal::tuple_dim<safe_types::DurationDim>;
+    REQUIRE(std::is_same<safe_types::internal::trim<type1, type1>::num, safe_types::internal::tuple_dim<>>::value == true);
+    REQUIRE(std::is_same<safe_types::internal::trim<type1, sametype>::num, safe_types::internal::tuple_dim<>>::value == true);
+    REQUIRE(std::is_same<safe_types::internal::trim<type1, type2>::num, safe_types::internal::tuple_dim<>>::value == false);
+}
+
+TEST_CASE("test type equality", "[complex]")
+{
+    using one_dim = safe_types::internal::tuple_dim<safe_types::DistanceDim, safe_types::DurationDim>;
+    using two_dim = safe_types::internal::tuple_dim<safe_types::DurationDim, safe_types::DistanceDim>;
+    using one_type = safe_types::internal::dim_ratio<one_dim, safe_types::internal::tuple_dim<>>;
+    using two_type = safe_types::internal::dim_ratio<two_dim, safe_types::internal::tuple_dim<>>;
+    REQUIRE(safe_types::is_same<one_type, two_type>::value == true);
+}
+
 TEST_CASE("test order", "[complex]")
 {
     using acceleration = decltype(std::declval<safe_types::millimeters>() / std::declval<safe_types::seconds>() / std::declval<safe_types::seconds>());
@@ -154,7 +173,7 @@ struct A
     A(A const&) { count++; }
     A& operator= (A const&) { count++; return *this; }
     A(A &&) { }
-    A& operator= (A &&) { return *this; }
+    A& operator= (A &&) noexcept { return *this; }
 };
 
 size_t A::count = 0;

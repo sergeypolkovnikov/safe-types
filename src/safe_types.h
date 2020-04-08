@@ -197,38 +197,38 @@ namespace safe_types
         }
 
     }
-}
 
-namespace std
-{
+    template<typename T1, typename T2>
+    struct is_same {};
+
     template<typename ...Num1, typename ...Den1, typename ...Num2, typename ...Den2>
-    struct is_same< 
+    struct is_same<
         safe_types::internal::dim_ratio<
-            safe_types::internal::tuple_dim<Num1...>,
-            safe_types::internal::tuple_dim<Den1...>>,
+        safe_types::internal::tuple_dim<Num1...>,
+        safe_types::internal::tuple_dim<Den1...>>,
         safe_types::internal::dim_ratio<
-            safe_types::internal::tuple_dim<Num2...>,
-            safe_types::internal::tuple_dim<Den2...>>>
-        : conditional_t<
-            safe_types::internal::is_degenerated<
-                safe_types::internal::dim_ratio<
-                    typename safe_types::internal::trim<
-                        typename safe_types::internal::join<
-                            safe_types::internal::tuple_dim<Num1...>, 
-                            safe_types::internal::tuple_dim<Den2...>>::type,
-                        typename safe_types::internal::join<
-                            safe_types::internal::tuple_dim<Num2...>,
-                            safe_types::internal::tuple_dim<Den1...>>::type>::num,
-                    typename safe_types::internal::trim<
-                        typename safe_types::internal::join<
-                            safe_types::internal::tuple_dim<Num1...>,
-                            safe_types::internal::tuple_dim<Den2...>>::type,
-                        typename safe_types::internal::join<
-                            safe_types::internal::tuple_dim<Num2...>,
-                            safe_types::internal::tuple_dim<Den1...>>::type>::den
-                >>::value,
-            true_type,
-            false_type>
+        safe_types::internal::tuple_dim<Num2...>,
+        safe_types::internal::tuple_dim<Den2...>>>
+        : std::conditional_t<
+        safe_types::internal::is_degenerated<
+        safe_types::internal::dim_ratio<
+        typename safe_types::internal::trim<
+        typename safe_types::internal::join<
+        safe_types::internal::tuple_dim<Num1...>,
+        safe_types::internal::tuple_dim<Den2...>>::type,
+        typename safe_types::internal::join<
+        safe_types::internal::tuple_dim<Num2...>,
+        safe_types::internal::tuple_dim<Den1...>>::type>::num,
+        typename safe_types::internal::trim<
+        typename safe_types::internal::join<
+        safe_types::internal::tuple_dim<Num1...>,
+        safe_types::internal::tuple_dim<Den2...>>::type,
+        typename safe_types::internal::join<
+        safe_types::internal::tuple_dim<Num2...>,
+        safe_types::internal::tuple_dim<Den1...>>::type>::den
+        >>::value,
+        std::true_type,
+        std::false_type>
     {};
 }
 
@@ -237,19 +237,40 @@ namespace safe_types
     namespace internal
     {
         template<typename Dim1, typename Dim2>
-        using DimIsConvertible = std::enable_if_t<std::is_same<Dim1, Dim2>::value>;
+        using DimIsConvertible = std::enable_if_t<is_same<Dim1, Dim2>::value>;
     }
 
-    template<typename UnderlyingType, typename Ratio, typename DimRatio>
+    template<typename UnderlyingType, typename Ratio, typename DimRatio, typename Limitations = limitations<true, true, true>>
     class complex_type {};
 
-    template<typename UnderlyingType, intmax_t Num, intmax_t Den, typename ... DimNums, typename ... DimDens>
-    class complex_type<UnderlyingType, std::ratio<Num, Den>, internal::dim_ratio<internal::tuple_dim<DimNums...>, internal::tuple_dim<DimDens...>>>
+    template<bool arithmetic, bool ordering, bool stream>
+    struct limitations
+    {
+        static constexpr bool enableArithmetic = arithmetic;
+        static constexpr bool enableOrdering = ordering;
+        static constexpr bool enableStream = stream;
+    };
+
+    namespace internal
+    {
+        template<typename Lim1, typename Lim2 = Lim1>
+        using arithmetic_enabled = std::enable_if_t<Lim1::enableArithmetic && Lim2::enableArithmetic>;
+
+        template<typename Lim1, typename Lim2 = Lim1>
+        using ordering_enabled = std::enable_if_t<Lim1::enableOrdering && Lim2::enableOrdering>;
+
+        template<typename Lim>
+        using streaming_enabled = std::enable_if_t<Lim::enableStream>;
+    }
+
+    template<typename UnderlyingType, intmax_t Num, intmax_t Den, typename ... DimNums, typename ... DimDens, typename Limitations>
+    class complex_type<UnderlyingType, std::ratio<Num, Den>, internal::dim_ratio<internal::tuple_dim<DimNums...>, internal::tuple_dim<DimDens...>>, Limitations>
     {
     public:
         using period = std::ratio<Num, Den>;
         using underlying_type = UnderlyingType;
         using dimensions = internal::dim_ratio<internal::tuple_dim<DimNums...>, internal::tuple_dim<DimDens...>>;
+        using limitations = Limitations;
 
         constexpr UnderlyingType value() const noexcept
         {
@@ -280,12 +301,16 @@ namespace safe_types
         {
         }
 
-        constexpr complex_type(const complex_type& other)
-            : m_value{ internal::cast_value<underlying_type, complex_type::period, period>(other.m_value) }
+        template<typename UnderlyingType, intmax_t Num, intmax_t Den, typename ... DimNums, typename ... DimDens,
+            typename = internal::DimIsConvertible<internal::dim_ratio<internal::tuple_dim<DimNums...>, internal::tuple_dim<DimDens...>>, dimensions>>
+            constexpr complex_type& operator=(const complex_type<UnderlyingType, std::ratio<Num, Den>, internal::dim_ratio<internal::tuple_dim<DimNums...>, internal::tuple_dim<DimDens...>>>& other)
         {
-            using other_complex = std::decay_t<decltype(other)>;
-            using other_ratio = typename other_complex::period;
-            m_value = internal::cast_value<underlying_type, other_ratio, period>(other.m_value);
+            m_value = internal::cast_value<underlying_type, std::ratio<Num, Den>, period>(other.value());
+        }
+
+        constexpr complex_type(const complex_type& other)
+            : m_value{other.m_value}
+        {
         }
 
         constexpr complex_type& operator=(const complex_type& other)
@@ -315,65 +340,75 @@ namespace safe_types
             return complex_type{ -value() };
         }
 
+        template<typename = internal::arithmetic_enabled<limitations>>
         constexpr complex_type& operator++()
         {
             ++m_value;
             return (*this);
         }
 
+        template<typename = internal::arithmetic_enabled<limitations>>
         constexpr complex_type operator++(int)
         {
             return (complex_type(m_value++));
         }
 
+        template<typename = internal::arithmetic_enabled<limitations>>
         constexpr complex_type& operator--()
         {
             --m_value;
             return (*this);
         }
 
+        template<typename = internal::arithmetic_enabled<limitations>>
         constexpr complex_type operator--(int)
         {
             return (complex_type(m_value--));
         }
 
+        template<typename = internal::arithmetic_enabled<limitations>>
         constexpr complex_type& operator+=(const complex_type& right)
         {
             m_value += right.m_value;
             return (*this);
         }
 
+        template<typename = internal::arithmetic_enabled<limitations>>
         constexpr complex_type& operator-=(const complex_type& right)
         {
             m_value -= right.m_value;
             return (*this);
         }
 
+        template<typename = internal::arithmetic_enabled<limitations>>
         constexpr complex_type& operator*=(internal::parameter_for_copy_t<UnderlyingType> right)
         {
             m_value *= right;
             return (*this);
         }
 
+        template<typename = internal::arithmetic_enabled<limitations>>
         constexpr complex_type& operator/=(internal::parameter_for_copy_t<UnderlyingType> right)
         {
             m_value /= right;
             return (*this);
         }
 
+        template<typename = internal::arithmetic_enabled<limitations>>
         constexpr complex_type& operator%=(internal::parameter_for_copy_t<UnderlyingType> right)
         {
             m_value %= right;
             return (*this);
         }
 
+        template<typename = internal::arithmetic_enabled<limitations>>
         constexpr complex_type& operator%=(const complex_type& right)
         {
             m_value %= right.value();
             return (*this);
         }
 
-        template<typename Stream>
+        template<typename Stream, typename = internal::streaming_enabled<limitations>>
         friend Stream& operator <<(Stream& stream, const complex_type& ct)
         {
             return stream << ct.value();
@@ -480,8 +515,11 @@ namespace safe_types
         typename Ratio2,
         typename Dim1,
         typename Dim2,
+        typename Lim1,
+        typename Lim2,
+        typename = internal::ordering_enabled<Lim1, Lim2>,
         typename = internal::DimIsConvertible<Dim1, Dim2>>
-        constexpr bool operator<(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
+        constexpr bool operator<(const complex_type<FirstUnderlyingType, Ratio1, Dim1, Lim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2, Lim2>& second) noexcept
     {
         using common_ut = std::common_type_t<FirstUnderlyingType, SecondUnderlyingType>;
         using common_ratio = safe_types::common_ratio<Ratio1, Ratio2>;
@@ -494,8 +532,11 @@ namespace safe_types
         typename Ratio2,
         typename Dim1,
         typename Dim2,
-        typename = std::is_same<Dim1, Dim2>>
-        constexpr bool operator>(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
+        typename Lim1,
+        typename Lim2,
+        typename = internal::ordering_enabled<Lim1, Lim2>,
+        typename = safe_types::internal::DimIsConvertible<Dim1, Dim2>>
+        constexpr bool operator>(const complex_type<FirstUnderlyingType, Ratio1, Dim1, Lim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2, Lim2>& second) noexcept
     {
         return second < first;
     }
@@ -506,8 +547,11 @@ namespace safe_types
         typename Ratio2,
         typename Dim1,
         typename Dim2,
+        typename Lim1,
+        typename Lim2,
+        typename = internal::ordering_enabled<Lim1, Lim2>,
         typename = internal::DimIsConvertible<Dim1, Dim2>>
-        constexpr bool operator<=(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
+        constexpr bool operator<=(const complex_type<FirstUnderlyingType, Ratio1, Dim1, Lim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2, Lim2>& second) noexcept
     {
         return !(second < first);
     }
@@ -518,8 +562,11 @@ namespace safe_types
         typename Ratio2,
         typename Dim1,
         typename Dim2,
+        typename Lim1,
+        typename Lim2,
+        typename = internal::ordering_enabled<Lim1, Lim2>,
         typename = internal::DimIsConvertible<Dim1, Dim2>>
-        constexpr bool operator>=(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
+        constexpr bool operator>=(const complex_type<FirstUnderlyingType, Ratio1, Dim1, Lim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2, Lim2>& second) noexcept
     {
         return !(first < second);
     }
@@ -530,8 +577,11 @@ namespace safe_types
         typename Ratio2,
         typename Dim1,
         typename Dim2,
+        typename Lim1,
+        typename Lim2,
+        typename = internal::arithmetic_enabled<Lim1, Lim2>,
         typename = internal::DimIsConvertible<Dim1, Dim2>>
-        constexpr auto operator+(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
+        constexpr auto operator+(const complex_type<FirstUnderlyingType, Ratio1, Dim1, Lim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2, Lim2>& second) noexcept
     {
         using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, Dim1>, complex_type<SecondUnderlyingType, Ratio2, Dim2>>;
         return _CT(cast<_CT>(first).value() + cast<_CT>(second).value());
@@ -543,8 +593,11 @@ namespace safe_types
         typename Ratio2,
         typename Dim1,
         typename Dim2,
+        typename Lim1,
+        typename Lim2,
+        typename = internal::arithmetic_enabled<Lim1, Lim2>,
         typename = internal::DimIsConvertible<Dim1, Dim2>>
-        constexpr auto operator-(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
+        constexpr auto operator-(const complex_type<FirstUnderlyingType, Ratio1, Dim1, Lim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2, Lim2>& second) noexcept
     {
         return first + (-second);
     }
@@ -554,8 +607,11 @@ namespace safe_types
         typename Ratio1,
         typename Ratio2,
         typename Dim1,
-        typename Dim2>
-        constexpr auto operator*(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
+        typename Dim2,
+        typename Lim1,
+        typename Lim2,
+        typename = internal::arithmetic_enabled<Lim1, Lim2>>
+        constexpr auto operator*(const complex_type<FirstUnderlyingType, Ratio1, Dim1, Lim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2, Lim2>& second) noexcept
     {
         using common_dim_type = internal::trim<typename internal::join<typename Dim1::num, typename Dim2::num>::type, typename internal::join<typename Dim1::den, typename Dim2::den>::type>;
         constexpr auto gcd12 = internal::gcd(Ratio1::num, Ratio2::den);
@@ -574,8 +630,10 @@ namespace safe_types
     template<typename UnderlyingType,
         typename Ratio1,
         typename Dim,
-        typename T>
-        constexpr auto operator*(const complex_type<UnderlyingType, Ratio1, Dim>& first, const T& val) noexcept
+        typename T,
+        typename Lim,
+        typename = internal::arithmetic_enabled<Lim>>
+        constexpr auto operator*(const complex_type<UnderlyingType, Ratio1, Dim, Lim>& first, const T& val) noexcept
     {
         using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, Dim>;
         return type{ first.value() * val };
@@ -584,8 +642,10 @@ namespace safe_types
     template<typename UnderlyingType,
         typename Ratio1,
         typename Dim,
-        typename T>
-        constexpr auto operator*(const T& val, const complex_type<UnderlyingType, Ratio1, Dim>& first) noexcept
+        typename T,
+        typename Lim,
+        typename = internal::arithmetic_enabled<Lim>>
+        constexpr auto operator*(const T& val, const complex_type<UnderlyingType, Ratio1, Dim, Lim>& first) noexcept
     {
         using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, Dim>;
         return type{ first.value() * val };
@@ -594,8 +654,10 @@ namespace safe_types
     template<typename UnderlyingType,
         typename Ratio1,
         typename Dim,
-        typename T>
-        constexpr auto operator/(const complex_type<UnderlyingType, Ratio1, Dim>& first, const T& val) noexcept
+        typename T,
+        typename Lim,
+        typename = internal::arithmetic_enabled<Lim>>
+        constexpr auto operator/(const complex_type<UnderlyingType, Ratio1, Dim, Lim>& first, const T& val) noexcept
     {
         using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, Dim>;
         return type{ first.value() / val };
@@ -604,8 +666,10 @@ namespace safe_types
     template<typename UnderlyingType,
         typename Ratio1,
         typename Dim,
-        typename T>
-        constexpr auto operator/(const T& val, const complex_type<UnderlyingType, Ratio1, Dim>& first) noexcept
+        typename T,
+        typename Lim,
+        typename = internal::arithmetic_enabled<Lim>>
+        constexpr auto operator/(const T& val, const complex_type<UnderlyingType, Ratio1, Dim, Lim>& first) noexcept
     {
         using type = complex_type<std::common_type_t<UnderlyingType, T>, std::ratio<Ratio1::den, Ratio1::num>, internal::dim_ratio<Dim::den, Dim::num>>;
         return type{ val / first.value() };
@@ -616,8 +680,11 @@ namespace safe_types
         typename Ratio1,
         typename Ratio2,
         typename Dim1,
-        typename Dim2>
-        constexpr auto operator/(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
+        typename Dim2,
+        typename Lim1,
+        typename Lim2,
+        typename = internal::arithmetic_enabled<Lim1, Lim2>>
+        constexpr auto operator/(const complex_type<FirstUnderlyingType, Ratio1, Dim1, Lim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2, Lim2>& second) noexcept
     {
         using common_dim_type = internal::trim<typename internal::join<typename Dim1::num, typename Dim2::den>::type, typename internal::join<typename Dim1::den, typename Dim2::num>::type>;
         constexpr auto gcd_num = internal::gcd(Ratio1::num, Ratio2::num);
@@ -636,8 +703,10 @@ namespace safe_types
     template<typename UnderlyingType,
         typename Ratio1,
         typename Dim,
-        typename T>
-        constexpr auto operator%(const complex_type<UnderlyingType, Ratio1, Dim>& first, const T& val) noexcept
+        typename T,
+        typename Lim,
+        typename = internal::arithmetic_enabled<Lim>>
+        constexpr auto operator%(const complex_type<UnderlyingType, Ratio1, Dim, Lim>& first, const T& val) noexcept
     {
         using type = complex_type<std::common_type_t<UnderlyingType, T>, Ratio1, Dim>;
         return type{ first.value() % val };
@@ -649,8 +718,11 @@ namespace safe_types
         typename Ratio2,
         typename Dim1,
         typename Dim2,
+        typename Lim1,
+        typename Lim2,
+        typename = internal::arithmetic_enabled<Lim1, Lim2>,
         typename = internal::DimIsConvertible<Dim1, Dim2>>
-        constexpr auto operator%(const complex_type<FirstUnderlyingType, Ratio1, Dim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2>& second) noexcept
+        constexpr auto operator%(const complex_type<FirstUnderlyingType, Ratio1, Dim1, Lim1>& first, const complex_type<SecondUnderlyingType, Ratio2, Dim2, Lim2>& second) noexcept
     {
         using _CT = std::common_type_t<complex_type<FirstUnderlyingType, Ratio1, Dim1>, complex_type<SecondUnderlyingType, Ratio2, Dim2>>;
         return _CT(cast<_CT>(first).value() % cast<_CT>(second).value());
